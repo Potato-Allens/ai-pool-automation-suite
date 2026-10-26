@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ site_name }} · 后台登录</title>
+<link rel="stylesheet" href="/static/admin.css?v=20261024e">
+<link rel="stylesheet" href="/static/auth.css?v=20261024e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M18 34l9 9 19-22' stroke='%2334e0b0' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body class="auth-body">
+<div class="auth-bg"></div>
+<main class="auth-shell">
+  <div class="auth-logo"><span class="logo-mark"></span><b>{{ site_name }}</b><small>ADMIN CONSOLE</small></div>
+
+  <section id="codePanel" class="auth-panel">
+    <h1>管理员登录</h1>
+    <p class="auth-sub">打开 Google Authenticator，直接输入当前的 6 位动态码。</p>
+    <form id="totpForm" autocomplete="off">
+      <div class="totp-boxes" id="totpBoxes">
+        <input inputmode="numeric" maxlength="1" autocomplete="one-time-code" autofocus>
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+      </div>
+      <button class="btn primary auth-btn" type="submit" id="btnTotp">进入后台</button>
+    </form>
+    <div id="err2" class="auth-err hidden"></div>
+    <div class="auth-tip">动态码每 30 秒刷新，请确保服务器与手机时间同步。</div>
+    <div id="setupHint" class="auth-tip hidden">初始化还没完成？<a href="/admin/setup">继续绑定谷歌验证器 →</a></div>
+  </section>
+
+  <div class="auth-foot">仅限授权管理员访问 · 登录行为全程审计</div>
+</main>
+<script src="/static/login.js?v=20261024e"></script>
+</body>
+</html>

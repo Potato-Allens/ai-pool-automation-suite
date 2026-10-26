@@ -1,0 +1,50 @@
+# ---- secrets / runtime data (NEVER commit) ----
+data/
+logs/
+.env
+*.pem
+*.key
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# ---- test / debug artifacts ----
+testdata*/
+uidata*/
+shots/
+run_*.txt
+e_*.txt
+o_*.txt
+work_nex_*.txt
+shot_*.png
+_tmp_*.py
+_dbg_*.py
+_live_*.py
+*.log
+
+# ---- packages ----
+*.zip
+*.tar.gz
+*.7z
+
+# ---- editor / os ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- one-off dev patch scripts ----
+fix_acme.py
+patch_ng.py
+_bump_pub.py

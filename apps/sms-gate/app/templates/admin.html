@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#070b14">
+<title>{{ site_name }} · 管理后台</title>
+<link rel="stylesheet" href="/static/admin.css?v=20261024m">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M18 34l9 9 19-22' stroke='%2334e0b0' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body class="adm">
+<aside class="side">
+  <div class="side-brand">
+    <span class="logo-mark"></span>
+    <div><b>{{ site_name }}</b><small>CONTROL PANEL</small></div>
+  </div>
+  <nav id="nav">
+    <a href="#/dashboard" data-route="dashboard"><i>▤</i>总览</a>
+    <a href="#/cards" data-route="cards"><i>▦</i>卡密管理</a>
+    <a href="#/relay" data-route="relay"><i>↗</i>直链卡</a>
+    <a href="#/numbers" data-route="numbers"><i>☎</i>号码池</a>
+    <a href="#/redemptions" data-route="redemptions"><i>⇄</i>兑换情况</a>
+    <a href="#/usage" data-route="usage"><i>▷</i>使用情况</a>
+    <a href="#/codes" data-route="codes"><i>⌁</i>接码情况</a>
+    <a href="#/audit" data-route="audit"><i>◈</i>安全审计</a>
+    <a href="#/ips" data-route="ips"><i>⛨</i>IP 管理</a>
+    <a href="#/settings" data-route="settings"><i>⚙</i>系统设置</a>
+  </nav>
+  <div class="side-foot">
+    <div class="me"><span class="avatar" id="meAvatar">A</span><div><b id="meName">—</b><small>管理员</small></div></div>
+    <button id="btnLogout" class="logout">退出登录</button>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="main-head">
+    <div>
+      <h1 id="pageTitle">总览</h1>
+      <p id="pageSub" class="sub">实时运营与安全态势</p>
+    </div>
+    <div class="head-right">
+      <span class="pill" id="providerPill">号源 —</span>
+      <span class="clock" id="clock">--:--:--</span>
+    </div>
+  </header>
+  <div id="content" class="content"><div class="loading">加载中…</div></div>
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="modalTitle">操作</h3><button id="modalClose" class="x" aria-label="关闭">×</button></div>
+    <div id="modalBody" class="modal-body"></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<script src="/static/admin.js?v=20261026a"></script>
+</body>
+</html>

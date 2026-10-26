@@ -1,0 +1,2349 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pippit Pool API",
+    "description": "\nPippit 号池的 OpenAI 风格视频生成接口。一个 Key 即可调用整个号池，服务端负责选号、排队、生成、落盘与自动清理。\n\n**能力**\n- 文生视频 / 图生视频 / 视频参考 / 音频参考（音频必须搭配图片或视频）\n- 默认 30 秒、1080x1920、30fps、H.264、无水印\n- 任务异步执行，支持轮询、取消、HEAD 探测与 Range 下载\n- 每个 Key 默认并发 2；号池按积分自动调度\n\n**鉴权**\n- `/v1/*`：`Authorization: Bearer <api_key>`\n- `/admin/*`：`X-Admin-Token: <admin_token>`\n- `/master/api/*`：面板登录后的 HttpOnly Cookie\n\n**典型流程**\n1. `POST /v1/videos` 创建任务，拿到 `id`\n2. `GET /v1/videos/{id}` 轮询，直到 `status=completed`\n3. `GET /v1/videos/{id}/content` 下载 mp4（支持 Range）\n",
+    "version": "1.1.0"
+  },
+  "paths": {
+    "/master": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "总台面板页面",
+        "description": "返回总台单页应用。首次访问扫码绑定 TOTP，之后用 6 位验证码登录。",
+        "operationId": "master_page_master_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/state": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "绑定 / 登录状态",
+        "description": "返回是否已完成 TOTP 绑定，以及当前请求是否携带有效登录 Cookie。",
+        "operationId": "master_state_master_api_state_get",
+        "responses": {
+          "200": {
+            "description": "enrolled + authed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/enroll/start": {
+      "post": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "开始绑定 TOTP",
+        "description": "生成新的 TOTP 密钥，返回 otpauth URI、PNG 二维码与 SVG。最近 5 个 pending 密钥 30 分钟内仍可确认。",
+        "operationId": "enroll_start_master_api_enroll_start_post",
+        "parameters": [
+          {
+            "name": "fresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true=强制生成新密钥；false=复用 30 分钟内的 pending 密钥",
+              "default": false,
+              "title": "Fresh"
+            },
+            "description": "true=强制生成新密钥；false=复用 30 分钟内的 pending 密钥"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "已经绑定过"
+          },
+          "429": {
+            "description": "尝试过于频繁（12 次 / 5 分钟）"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/enroll/confirm": {
+      "post": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "确认绑定 TOTP",
+        "description": "校验 6 位验证码；成功后写入 master_totp_secret 并下发 7 天 HttpOnly 登录 Cookie。",
+        "operationId": "enroll_confirm_master_api_enroll_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "没有 pending 绑定或验证码错误"
+          },
+          "429": {
+            "description": "尝试过于频繁"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/login": {
+      "post": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "验证码登录",
+        "description": "用 Google Authenticator 当前 6 位码登录，成功下发 7 天 HttpOnly Cookie。",
+        "operationId": "master_login_master_api_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "尚未绑定或验证码错误"
+          },
+          "429": {
+            "description": "尝试过于频繁"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/logout": {
+      "post": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "退出登录",
+        "description": "清除 pp_master Cookie。",
+        "operationId": "master_logout_master_api_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/overview": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "看板总览",
+        "description": "返回账号数、积分、可产条数、任务统计、视频占用、磁盘与清理状态。",
+        "operationId": "overview_master_api_overview_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Cookie 过期"
+          }
+        }
+      }
+    },
+    "/master/api/jobs": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "任务列表",
+        "description": "按创建时间倒序返回任务，可按状态过滤，最多 300 条。",
+        "operationId": "jobs_master_api_jobs_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 300,
+              "minimum": 1,
+              "description": "返回条数，1–300",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "返回条数，1–300"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "queued / running / completed / failed / canceled",
+              "title": "Status"
+            },
+            "description": "queued / running / completed / failed / canceled"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Cookie 过期"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/jobs/{jid}": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "任务详情 + 事件",
+        "description": "返回任务完整字段、最近 40 条事件，以及本地视频是否仍存在。",
+        "operationId": "job_detail_master_api_jobs__jid__get",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "任务 ID",
+              "title": "Jid"
+            },
+            "description": "任务 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "404": {
+            "description": "任务不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/jobs/{jid}/video": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "播放本地成片",
+        "description": "在面板中直接播放服务器本地 mp4。文件已被清理时返回 404。",
+        "operationId": "job_video_master_api_jobs__jid__video_get",
+        "parameters": [
+          {
+            "name": "jid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "任务 ID",
+              "title": "Jid"
+            },
+            "description": "任务 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "404": {
+            "description": "视频文件不可用"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/keys": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "Key 列表",
+        "description": "返回全部 Key 的元数据（不含明文）。",
+        "operationId": "keys_master_api_keys_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "创建 Key",
+        "description": "创建新的 Bearer Key；明文只在本次响应返回。",
+        "operationId": "key_new_master_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/panel__KeyReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/keys/{kid}": {
+      "delete": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "撤销 Key",
+        "description": "将 Key 标记为失效，历史任务保留。",
+        "operationId": "key_del_master_api_keys__kid__delete",
+        "parameters": [
+          {
+            "name": "kid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Key ID",
+              "title": "Kid"
+            },
+            "description": "Key ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/accounts": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "账号列表",
+        "description": "按积分倒序返回账号状态、冷却时间、成功/失败计数，最多 500 条。",
+        "operationId": "accounts_master_api_accounts_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "返回条数，1–500",
+              "default": 200,
+              "title": "Limit"
+            },
+            "description": "返回条数，1–500"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/settings": {
+      "get": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "读取清理设置",
+        "description": "返回保留天数、总量上限与自动清理开关。",
+        "operationId": "settings_get_master_api_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "保存清理设置",
+        "description": "更新保留天数、总量上限与自动清理开关；返回保存后的完整设置。",
+        "operationId": "settings_set_master_api_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsReq"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/master/api/sweep": {
+      "post": {
+        "tags": [
+          "面板 API"
+        ],
+        "summary": "执行 / 预览清理",
+        "description": "按保留天数、总量上限与低磁盘策略扫描视频。dry_run=true 只预览，不删除文件。",
+        "operationId": "sweep_now_master_api_sweep_post",
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "true=只预览；false=真正删除",
+              "default": true,
+              "title": "Dry Run"
+            },
+            "description": "true=只预览；false=真正删除"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未登录"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "模型列表",
+        "description": "返回当前可用的模型、输出规格与积分成本。需要 Bearer Key。",
+        "operationId": "models_v1_models_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/videos": {
+      "post": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "创建视频任务",
+        "description": "创建一条异步视频任务，立即返回任务对象（status=queued）。\n服务端按账号积分自动选号；单条 30 秒约消耗 120 积分。\n带 reference_image/video/audio 时平台通常限制 10–20 秒；30 秒请使用纯文本提示词。\n每个 Key 默认最多 2 个进行中的任务。",
+        "operationId": "create_video_v1_videos_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "任务对象，含 id、status、progress、seconds、size",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误（时长、比例、参考素材组合不合法等）"
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "429": {
+            "description": "Key 并发或额度超限"
+          },
+          "503": {
+            "description": "号池没有账号能负担本次积分"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "查询任务列表",
+        "description": "按创建时间倒序返回当前 Key 的任务，最多 200 条。",
+        "operationId": "list_videos_v1_videos_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "返回条数，1–200",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "返回条数，1–200"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/video/generations": {
+      "post": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "创建视频任务（OpenAI 别名）",
+        "description": "与 POST /v1/videos 完全等价，兼容部分 OpenAI 风格 SDK。",
+        "operationId": "create_video_alias_v1_video_generations_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "429": {
+            "description": "Key 并发或额度超限"
+          },
+          "503": {
+            "description": "号池没有账号能负担本次积分"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/videos/{vid}": {
+      "get": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "查询单个任务",
+        "description": "轮询任务状态与进度。status=completed 后可下载；failed 时带 error 字段。",
+        "operationId": "get_video_v1_videos__vid__get",
+        "parameters": [
+          {
+            "name": "vid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "任务 ID，即 POST /v1/videos 返回的 id",
+              "title": "Vid"
+            },
+            "description": "任务 ID，即 POST /v1/videos 返回的 id"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "404": {
+            "description": "任务不存在，或不属于当前 Key"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/videos/{vid}/content": {
+      "get": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "下载视频（支持 Range）",
+        "description": "返回 mp4 文件。支持 HTTP Range（206 分段下载）。本地文件被自动清理后返回 410。",
+        "operationId": "get_content_v1_videos__vid__content_get",
+        "parameters": [
+          {
+            "name": "vid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "任务 ID",
+              "title": "Vid"
+            },
+            "description": "任务 ID"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "完整 mp4",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "206": {
+            "description": "Range 分段内容"
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "404": {
+            "description": "任务不存在，或不属于当前 Key"
+          },
+          "409": {
+            "description": "任务尚未完成"
+          },
+          "410": {
+            "description": "本地文件已被自动清理"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "探测视频（HEAD）",
+        "description": "只返回响应头，包含 Content-Length 与 Accept-Ranges: bytes，可用于下载前探测大小。",
+        "operationId": "head_content_v1_videos__vid__content_head",
+        "parameters": [
+          {
+            "name": "vid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "任务 ID",
+              "title": "Vid"
+            },
+            "description": "任务 ID"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文件可下载",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "404": {
+            "description": "任务不存在，或不属于当前 Key"
+          },
+          "409": {
+            "description": "任务尚未完成"
+          },
+          "410": {
+            "description": "本地文件已被自动清理"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/videos/{vid}/cancel": {
+      "post": {
+        "tags": [
+          "公开 API"
+        ],
+        "summary": "取消排队中的任务",
+        "description": "只能取消 status=queued 的任务；已经开始的生成任务返回 409。",
+        "operationId": "cancel_video_v1_videos__vid__cancel_post",
+        "parameters": [
+          {
+            "name": "vid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "任务 ID",
+              "title": "Vid"
+            },
+            "description": "任务 ID"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME",
+              "title": "Authorization"
+            },
+            "description": "Bearer API Key，格式：Bearer sk-pp-REPLACE_ME"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "缺少或无效的 API Key"
+          },
+          "404": {
+            "description": "任务不存在，或不属于当前 Key"
+          },
+          "409": {
+            "description": "任务已经开始，不能取消"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/keys": {
+      "post": {
+        "tags": [
+          "管理 API"
+        ],
+        "summary": "创建 API Key",
+        "description": "创建一个新的 Bearer Key。明文只在本次响应返回，请立即保存。",
+        "operationId": "create_key_admin_keys_post",
+        "parameters": [
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理令牌，值见服务器 data/admin_token.txt",
+              "title": "X-Admin-Token"
+            },
+            "description": "管理令牌，值见服务器 data/admin_token.txt"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token",
+              "title": "Authorization"
+            },
+            "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__KeyReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "管理令牌错误"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "管理 API"
+        ],
+        "summary": "Key 列表",
+        "description": "返回全部 Key 的元数据（不含明文）。",
+        "operationId": "list_keys_admin_keys_get",
+        "parameters": [
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理令牌，值见服务器 data/admin_token.txt",
+              "title": "X-Admin-Token"
+            },
+            "description": "管理令牌，值见服务器 data/admin_token.txt"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token",
+              "title": "Authorization"
+            },
+            "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "管理令牌错误"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/keys/{kid}": {
+      "delete": {
+        "tags": [
+          "管理 API"
+        ],
+        "summary": "撤销 Key",
+        "description": "将 Key 标记为失效，历史任务保留。",
+        "operationId": "delete_key_admin_keys__kid__delete",
+        "parameters": [
+          {
+            "name": "kid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Key ID",
+              "title": "Kid"
+            },
+            "description": "Key ID"
+          },
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理令牌，值见服务器 data/admin_token.txt",
+              "title": "X-Admin-Token"
+            },
+            "description": "管理令牌，值见服务器 data/admin_token.txt"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token",
+              "title": "Authorization"
+            },
+            "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "管理令牌错误"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/accounts/import": {
+      "post": {
+        "tags": [
+          "管理 API"
+        ],
+        "summary": "导入账号",
+        "description": "导入一个或多个号池账号；bootstrap=true 时会立即登录平台校验并刷新积分。",
+        "operationId": "import_accounts_admin_accounts_import_post",
+        "parameters": [
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理令牌，值见服务器 data/admin_token.txt",
+              "title": "X-Admin-Token"
+            },
+            "description": "管理令牌，值见服务器 data/admin_token.txt"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token",
+              "title": "Authorization"
+            },
+            "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "没有解析到任何账号"
+          },
+          "401": {
+            "description": "管理令牌错误"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/accounts": {
+      "get": {
+        "tags": [
+          "管理 API"
+        ],
+        "summary": "账号列表",
+        "description": "返回账号状态、积分、最近错误与任务计数；cookies 只显示数量。",
+        "operationId": "admin_accounts_admin_accounts_get",
+        "parameters": [
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理令牌，值见服务器 data/admin_token.txt",
+              "title": "X-Admin-Token"
+            },
+            "description": "管理令牌，值见服务器 data/admin_token.txt"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token",
+              "title": "Authorization"
+            },
+            "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "管理令牌错误"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/accounts/refresh": {
+      "post": {
+        "tags": [
+          "管理 API"
+        ],
+        "summary": "刷新账号积分",
+        "description": "重新登录平台读取积分；claim=true 时先领取每日任务奖励。可指定 uids，默认全部。",
+        "operationId": "refresh_accounts_admin_accounts_refresh_post",
+        "parameters": [
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理令牌，值见服务器 data/admin_token.txt",
+              "title": "X-Admin-Token"
+            },
+            "description": "管理令牌，值见服务器 data/admin_token.txt"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token",
+              "title": "Authorization"
+            },
+            "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshReq"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "管理令牌错误"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/jobs": {
+      "get": {
+        "tags": [
+          "管理 API"
+        ],
+        "summary": "全部任务",
+        "description": "返回全号池任务，按创建时间倒序，最多 500 条。",
+        "operationId": "admin_jobs_admin_jobs_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "返回条数，1–500",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "返回条数，1–500"
+          },
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "管理令牌，值见服务器 data/admin_token.txt",
+              "title": "X-Admin-Token"
+            },
+            "description": "管理令牌，值见服务器 data/admin_token.txt"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token",
+              "title": "Authorization"
+            },
+            "description": "也可以用 Bearer <admin_token> 代替 X-Admin-Token"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "管理令牌错误"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "系统"
+        ],
+        "summary": "健康检查",
+        "description": "返回服务存活状态、服务器时间与 admin token 文件位置。无需鉴权。",
+        "operationId": "health_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "系统"
+        ],
+        "summary": "服务信息",
+        "description": "返回服务入口、文档地址与面板地址。无需鉴权。",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CodeReq": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Google Authenticator 当前的 6 位数字",
+            "examples": [
+              "123456"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "CodeReq"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImportReq": {
+        "properties": {
+          "accounts": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounts",
+            "description": "账号对象数组。每个对象至少包含 uid 与 cookies；可选 ports、tag、workspace_id、space_id、credit。",
+            "examples": [
+              [
+                {
+                  "cookies": {
+                    "sessionid": "..."
+                  },
+                  "ports": [
+                    22030,
+                    22031,
+                    22032
+                  ],
+                  "uid": "123456"
+                }
+              ]
+            ]
+          },
+          "paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paths",
+            "description": "服务器本地 JSON 文件路径数组。文件内容可以是账号对象、账号数组或指向账号文件的路径。",
+            "examples": [
+              [
+                "/opt/pippit-pool/data/accounts.json"
+              ]
+            ]
+          },
+          "bootstrap": {
+            "type": "boolean",
+            "title": "Bootstrap",
+            "description": "是否立即登录平台并拉取 workspace/space/积分",
+            "default": true,
+            "examples": [
+              true
+            ]
+          },
+          "min_credit": {
+            "type": "integer",
+            "title": "Min Credit",
+            "description": "只保留积分不低于该值的导入结果",
+            "default": 0,
+            "examples": [
+              0
+            ]
+          }
+        },
+        "type": "object",
+        "title": "ImportReq"
+      },
+      "RefreshReq": {
+        "properties": {
+          "uids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uids",
+            "description": "只刷新指定 uid；不传则刷新全部账号",
+            "examples": [
+              [
+                "123456"
+              ]
+            ]
+          },
+          "claim": {
+            "type": "boolean",
+            "title": "Claim",
+            "description": "刷新前先领取每日任务奖励（claim_all）",
+            "default": false,
+            "examples": [
+              false
+            ]
+          }
+        },
+        "type": "object",
+        "title": "RefreshReq"
+      },
+      "SettingsReq": {
+        "properties": {
+          "retention_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retention Days",
+            "description": "保留天数；0=不按时间删除",
+            "examples": [
+              7
+            ]
+          },
+          "max_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Gb",
+            "description": "视频总量上限 GB；0=不限",
+            "examples": [
+              20
+            ]
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled",
+            "description": "是否启用后台自动清理",
+            "examples": [
+              true
+            ]
+          }
+        },
+        "type": "object",
+        "title": "SettingsReq"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VideoRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "模型 ID 或别名。可选 pippit-smart-1080p-30s（默认）、pippit-smart-720p-30s、pippit-smart-1080p、seedance-2.0-smart-1080p-30s、smart、auto。",
+            "default": "pippit-smart-1080p-30s",
+            "examples": [
+              "pippit-smart-1080p-30s"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "视频提示词。建议写明主体、动作、镜头、光线与风格；纯文本模式可生成 30 秒。",
+            "examples": [
+              "a cinematic sunrise over a misty lake, slow push-in, 6 shots, no text"
+            ]
+          },
+          "seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds",
+            "description": "视频时长（秒），5–30。与 duration 二选一；都不传默认 30。带参考素材时平台通常只接受 10–20 秒。",
+            "examples": [
+              30
+            ]
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration",
+            "description": "seconds 的别名，兼容部分 OpenAI SDK。",
+            "examples": [
+              30
+            ]
+          },
+          "size": {
+            "type": "string",
+            "title": "Size",
+            "description": "输出尺寸。支持 1080x1920、1920x1080、1080x1080、720x1280、1280x720、720x720；会据此推导 ratio。",
+            "default": "1080x1920",
+            "examples": [
+              "1080x1920"
+            ]
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution",
+            "description": "清晰度：720p 或 1080p。不传则按模型默认值。",
+            "examples": [
+              "1080p"
+            ]
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio",
+            "description": "画面比例：9:16、16:9、1:1。size 能识别时以 size 为准。",
+            "examples": [
+              "9:16"
+            ]
+          },
+          "n": {
+            "type": "integer",
+            "title": "N",
+            "description": "生成条数。当前只支持 1。",
+            "default": 1,
+            "examples": [
+              1
+            ]
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "调用方自定义元数据，仅随任务保存，不影响生成。",
+            "examples": [
+              {
+                "client": "demo",
+                "trace_id": "abc-123"
+              }
+            ]
+          },
+          "reference_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Image Url",
+            "description": "参考图：http(s) URL 或服务器本地绝对路径。用于图生视频 / 首帧参考。",
+            "examples": [
+              "https://example.com/ref.jpg"
+            ]
+          },
+          "reference_video_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Video Url",
+            "description": "参考视频：http(s) URL 或服务器本地绝对路径。用于动作 / 风格参考。",
+            "examples": [
+              "https://example.com/ref.mp4"
+            ]
+          },
+          "reference_audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Audio Url",
+            "description": "参考音频：http(s) URL 或服务器本地绝对路径。必须同时提供参考图或参考视频，否则 400。",
+            "examples": [
+              "https://example.com/ref.mp3"
+            ]
+          },
+          "reference_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Image",
+            "description": "reference_image_url 的简写别名。",
+            "examples": [
+              "https://example.com/ref.jpg"
+            ]
+          },
+          "reference_video": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Video",
+            "description": "reference_video_url 的简写别名。",
+            "examples": [
+              "https://example.com/ref.mp4"
+            ]
+          },
+          "reference_audio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Audio",
+            "description": "reference_audio_url 的简写别名。",
+            "examples": [
+              "https://example.com/ref.mp3"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "VideoRequest"
+      },
+      "app__KeyReq": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Key 名称，便于区分调用方",
+            "default": "default",
+            "examples": [
+              "client-a"
+            ]
+          },
+          "quota": {
+            "type": "integer",
+            "title": "Quota",
+            "description": "累计任务额度；0 表示不限",
+            "default": 0,
+            "examples": [
+              0
+            ]
+          },
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days",
+            "description": "有效天数；null 表示永不过期",
+            "examples": [
+              30
+            ]
+          }
+        },
+        "type": "object",
+        "title": "KeyReq"
+      },
+      "panel__KeyReq": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Key 名称",
+            "default": "panel-key",
+            "examples": [
+              "client-a"
+            ]
+          },
+          "quota": {
+            "type": "integer",
+            "title": "Quota",
+            "description": "累计任务额度；0=不限",
+            "default": 0,
+            "examples": [
+              0
+            ]
+          },
+          "expires_in_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires In Days",
+            "description": "有效天数；null=永久",
+            "examples": [
+              30
+            ]
+          }
+        },
+        "type": "object",
+        "title": "KeyReq"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "公开 API",
+      "description": "给业务方调用的 OpenAI 风格接口，使用 Bearer Key 鉴权。"
+    },
+    {
+      "name": "管理 API",
+      "description": "号池运维接口，使用 X-Admin-Token 鉴权。"
+    },
+    {
+      "name": "面板 API",
+      "description": "总台面板内部接口，使用登录 Cookie 鉴权。"
+    },
+    {
+      "name": "系统",
+      "description": "健康检查与服务信息，无需鉴权。"
+    }
+  ]
+}

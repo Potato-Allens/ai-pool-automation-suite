@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ site_name }} · 初始化后台</title>
+<link rel="stylesheet" href="/static/admin.css?v=20261024e">
+<link rel="stylesheet" href="/static/auth.css?v=20261024e">
+</head>
+<body class="auth-body">
+<div class="auth-bg"></div>
+<main class="auth-shell wide">
+  <div class="auth-logo"><span class="logo-mark"></span><b>{{ site_name }}</b><small>FIRST-RUN SETUP</small></div>
+
+  <section id="setup1" class="auth-panel">
+    <h1 id="setupTitle">初始化管理后台</h1>
+    <p class="auth-sub" id="setupSub">创建管理员账号，然后扫码绑定 Google Authenticator。初始化令牌已写入服务器 <code>data/setup.token</code>。</p>
+    <form id="setupForm" autocomplete="off">
+      <label class="fld">初始化令牌<input name="token" id="token" placeholder="来自 /admin/setup?t=..." required></label>
+      <label class="fld">管理员用户名<input name="username" placeholder="3-32 位英文或数字" required></label>
+      <label class="fld">密码<input name="password" type="password" placeholder="至少 10 位，含大小写和数字" required></label>
+      <label class="fld">确认密码<input name="password2" type="password" required></label>
+      <button class="btn primary auth-btn" type="submit" id="btnSetup">创建并生成二维码</button>
+    </form>
+    <div id="err1" class="auth-err hidden"></div>
+  </section>
+
+  <section id="setup2" class="auth-panel hidden">
+    <h1>绑定验证器</h1>
+    <p class="auth-sub">用 Google Authenticator / 1Password / Authy 扫描二维码，然后输入生成的 6 位数字。</p>
+    <div class="qr-wrap" id="qrWrap"></div>
+    <div class="secret-line">手动密钥：<code id="secretText">—</code></div>
+    <form id="verifyForm" autocomplete="off">
+      <div class="totp-boxes" id="totpBoxes">
+        <input inputmode="numeric" maxlength="1" autocomplete="one-time-code">
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+        <input inputmode="numeric" maxlength="1">
+      </div>
+      <button class="btn primary auth-btn" type="submit" id="btnVerify">完成绑定并登录</button>
+    </form>
+    <div id="err2" class="auth-err hidden"></div>
+  </section>
+
+  <div class="auth-foot">初始化仅可执行一次 · 绑定后后台将强制双因素验证</div>
+</main>
+<script src="/static/setup.js?v=20261024e"></script>
+</body>
+</html>

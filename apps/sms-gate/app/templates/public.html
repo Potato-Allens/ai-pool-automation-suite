@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070b14">
+<title>{{ site_name }} · 卡密接码</title>
+<link rel="stylesheet" href="/static/style.css?v=20261024j">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M18 34l9 9 19-22' stroke='%2334e0b0' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+</head>
+<body class="pub">
+<div class="aurora a1"></div><div class="aurora a2"></div>
+<div class="grid-bg"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo-mark"></span>
+    <span class="brand-name">{{ site_name }}</span>
+    <span class="brand-tag">SMS&nbsp;RELAY</span>
+  </div>
+  <div class="top-right">
+    <span id="netStatus" class="chip chip-idle"><i class="pulse"></i>连接中</span>
+  </div>
+</header>
+
+<main id="app" data-key="{{ card_key or '' }}" data-poll="{{ poll_interval }}" data-note="{{ note }}">
+
+  <section id="view-auth" class="auth-wrap hidden">
+    <div class="auth-card">
+      <div class="auth-badge">CARD&nbsp;ACCESS</div>
+      <h1>卡密授权</h1>
+      <p class="muted">打开专属链接可自动验证；也可以手动输入卡密。</p>
+      <form id="authForm" autocomplete="off">
+        <div class="field">
+          <input id="keyInput" name="key" type="text" inputmode="text" spellcheck="false"
+                 placeholder="XXXX-XXXX-XXXX-XXXX" aria-label="卡密" autocomplete="off">
+        </div>
+        <button class="btn primary wide" type="submit" id="btnAuth">验证并进入</button>
+      </form>
+      <div class="auth-foot">
+        <span class="dot-ok"></span> 单卡单码 · 一次选段 · 取码成功自动核销
+      </div>
+      <div id="authError" class="form-error hidden"></div>
+    </div>
+    <div class="auth-side">
+      <div class="side-line"><b>01</b> 验证卡密链接</div>
+      <div class="side-line"><b>02</b> 选择号段（美 / 英 / 港 / 国内，选定不可更改）</div>
+      <div class="side-line"><b>03</b> 取号后每 15 秒自动取码</div>
+      <div class="side-note">请勿关闭页面，验证码到达后会立即显示。</div>
+    </div>
+  </section>
+
+  <section id="view-work" class="work hidden">
+    <div class="workbar">
+      <div class="wb-left">
+        <span class="wb-label">卡密</span>
+        <code id="cardPrefix">—</code>
+        <span id="cardState" class="chip chip-idle">—</span>
+      </div>
+      <div class="wb-right">
+        <button id="btnExit" class="btn tiny ghost">退出</button>
+      </div>
+    </div>
+
+    <div class="steps">
+      <section class="panel step" id="step1">
+        <div class="step-head"><span class="step-num">01</span><h2>选择号段</h2><span class="step-hint">选定后不可更改</span></div>
+        <div class="country-grid" id="countryGrid">
+          <button class="country" data-code="us" type="button">
+            <span class="flag">🇺🇸</span><span class="c-name">美国</span><span class="c-sub">United States</span>
+            <span class="c-stock" data-stock="us">库存 —</span>
+          </button>
+          <button class="country" data-code="gb" type="button">
+            <span class="flag">🇬🇧</span><span class="c-name">英国</span><span class="c-sub">United Kingdom</span>
+            <span class="c-stock" data-stock="gb">库存 —</span>
+          </button>
+          <button class="country" data-code="hk" type="button">
+            <span class="flag">🇭🇰</span><span class="c-name">香港</span><span class="c-sub">Hong Kong</span>
+            <span class="c-stock" data-stock="hk">库存 —</span>
+          </button>
+          <button class="country" data-code="cn_real" type="button">
+            <span class="flag">🇨🇳</span><span class="c-name">国内 · 实卡</span><span class="c-sub">China · Real SIM</span>
+            <span class="c-stock" data-stock="cn_real">按需取号</span>
+          </button>
+          <button class="country" data-code="cn_virtual" type="button">
+            <span class="flag">🇨🇳</span><span class="c-name">国内 · 虚卡</span><span class="c-sub">China · Virtual</span>
+            <span class="c-stock" data-stock="cn_virtual">按需取号</span>
+          </button>
+        </div>
+        <div id="choiceFixed" class="choice-fixed hidden"></div>
+      </section>
+
+      <section class="panel step" id="step2">
+        <div class="step-head"><span class="step-num">02</span><h2>获取号码</h2><span class="step-hint" id="numHint">未选择</span></div>
+        <div class="number-box" id="numberBox">
+          <div class="empty-state">
+            <span class="empty-icon">◎</span>
+            <span>选择号段后点击下方按钮取号</span>
+          </div>
+        </div>
+        <button id="btnNumber" class="btn primary wide" type="button">获取号码</button>
+      </section>
+
+      <section class="panel step" id="step3">
+        <div class="step-head"><span class="step-num">03</span><h2>接收验证码</h2><span id="pollState" class="chip chip-idle">待取号</span></div>
+        <div class="code-wrap">
+          <div class="code-box" id="codeBox" data-code="">
+            <span class="d">–</span><span class="d">–</span><span class="d">–</span><span class="d">–</span><span class="d">–</span><span class="d">–</span>
+          </div>
+          <div class="poll-row">
+            <div class="poll-meta">每 <b id="pollInt">{{ poll_interval }}</b> 秒自动刷新 · 上次 <span id="lastPoll">—</span></div>
+            <div class="poll-timer"><span id="ttlText">—</span></div>
+          </div>
+          <div class="poll-progress"><i id="pollBar"></i></div>
+        </div>
+        <button id="btnPoll" class="btn ghost wide" type="button" disabled>立即刷新</button>
+        <button id="btnRetryNum" class="btn ghost wide hidden" type="button">收不到？换一个号码</button>
+      </section>
+    </div>
+
+    <section class="panel log-panel">
+      <div class="log-head"><h3>会话记录</h3><span class="muted small" id="logMeta"></span></div>
+      <ul id="log" class="log-list"></ul>
+    </section>
+
+    <div class="foot-note">{{ note }}</div>
+  </section>
+</main>
+
+<footer class="footer">
+  <span>{{ site_name }} · 安全接码通道</span>
+  <span class="footer-dot">·</span>
+  <span>TLS &amp; CSRF 保护</span>
+</footer>
+
+<div id="toast" class="toast"></div>
+<script src="/static/public.js?v=20261025a"></script>
+</body>
+</html>

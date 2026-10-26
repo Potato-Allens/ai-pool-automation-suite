@@ -1,0 +1,3 @@
+requests>=2.31
+frida>=16.0
+frida-tools>=12.0

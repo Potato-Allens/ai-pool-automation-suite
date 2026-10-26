@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pippit Pool · 控制台</title>
+<style>
+  :root{
+    --bg:#070a14; --card:rgba(18,24,43,.82); --line:rgba(120,150,255,.16);
+    --txt:#e8ecff; --dim:#8c96b8; --acc:#5b8cff; --acc2:#9b6bff; --ok:#38d39f; --bad:#ff5d73;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:
+    radial-gradient(900px 500px at 12% -10%,rgba(91,140,255,.22),transparent 60%),
+    radial-gradient(800px 500px at 100% 0%,rgba(155,107,255,.18),transparent 55%),
+    var(--bg);color:var(--txt);font:14px/1.6 "Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1040px;margin:0 auto;padding:34px 20px 70px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--acc),var(--acc2));
+    display:grid;place-items:center;font-weight:800;font-size:18px;box-shadow:0 8px 26px rgba(91,140,255,.35)}
+  h1{font-size:19px;margin:0;letter-spacing:.4px}
+  .sub{color:var(--dim);font-size:12px;margin-top:2px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;
+    backdrop-filter:blur(14px);box-shadow:0 18px 50px rgba(0,0,0,.35);margin-bottom:18px}
+  .card h2{font-size:15px;margin:0 0 14px;font-weight:650;letter-spacing:.3px}
+  .hint{color:var(--dim);font-size:12.5px}
+  label{display:block;font-size:12px;color:var(--dim);margin:0 0 6px}
+  input,button,select{font:inherit}
+  input[type=text],input[type=number]{width:100%;padding:11px 13px;border-radius:11px;color:var(--txt);
+    background:rgba(8,12,24,.75);border:1px solid var(--line);outline:none}
+  input:focus{border-color:rgba(91,140,255,.65);box-shadow:0 0 0 3px rgba(91,140,255,.14)}
+  button{cursor:pointer;border:0;border-radius:11px;padding:11px 18px;font-weight:600;color:#fff;
+    background:linear-gradient(135deg,var(--acc),var(--acc2));transition:.18s transform,.18s filter}
+  button:hover{filter:brightness(1.08)} button:active{transform:translateY(1px)}
+  button.ghost{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--txt)}
+  button.danger{background:rgba(255,93,115,.14);border:1px solid rgba(255,93,115,.4);color:#ff9aa8}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .row>*{flex:1 1 180px}
+  .qrbox{display:flex;gap:22px;flex-wrap:wrap;align-items:center;margin-top:16px}
+  .qr{width:196px;height:196px;background:#fff;border-radius:14px;padding:8px;display:grid;place-items:center}
+  .qr img{width:100%;height:100%;display:block}
+  .secret{font-family:ui-monospace,Consolas,monospace;font-size:13px;background:rgba(8,12,24,.8);
+    border:1px dashed var(--line);padding:9px 12px;border-radius:9px;word-break:break-all;color:#bcd0ff}
+  .codes{display:flex;gap:8px;margin:14px 0}
+  .codes input{width:46px;height:56px;text-align:center;font-size:22px;font-weight:700;padding:0;
+    border-radius:11px;background:rgba(8,12,24,.75);border:1px solid var(--line);color:var(--txt);outline:none}
+  .codes input:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(91,140,255,.16)}
+  .msg{margin-top:12px;font-size:13px;min-height:20px}
+  .msg.err{color:var(--bad)} .msg.ok{color:var(--ok)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid rgba(120,150,255,.1);vertical-align:middle}
+  th{color:var(--dim);font-weight:600;font-size:12px}
+  td.mono,.mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;white-space:nowrap}
+  td.err{max-width:430px;white-space:normal;word-break:break-all;line-height:1.45}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;border:1px solid transparent}
+  .pill.on{background:rgba(56,211,159,.14);color:var(--ok);border-color:rgba(56,211,159,.3)}
+  .pill.off{background:rgba(255,93,115,.12);color:#ff9aa8;border-color:rgba(255,93,115,.28)}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:14px;margin-bottom:6px}
+  .stat{background:rgba(8,12,24,.55);border:1px solid var(--line);border-radius:13px;padding:13px 15px}
+  .stat b{display:block;font-size:22px;line-height:1.3}
+  .stat span{color:var(--dim);font-size:11.5px}
+  .newkey{margin-top:14px;padding:14px;border-radius:12px;border:1px solid rgba(56,211,159,.35);
+    background:rgba(56,211,159,.07);display:none}
+  .newkey code{display:block;margin-top:8px;padding:10px;border-radius:9px;background:rgba(4,8,18,.85);
+    font-size:13px;word-break:break-all;color:#a8ffdf}
+  .hidden{display:none!important}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);opacity:0;
+    background:rgba(20,28,50,.95);border:1px solid var(--line);padding:11px 20px;border-radius:12px;
+    transition:.25s;font-size:13px;pointer-events:none;z-index:9}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:640px){.wrap{padding:22px 14px 60px}.codes input{width:40px;height:50px;font-size:19px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">P</div>
+      <div>
+        <h1>Pippit Pool 控制台</h1>
+        <div class="sub">1080p · 30.000s · 900 帧 · 无水印</div>
+      </div>
+    </div>
+    <div id="who" class="hint"></div>
+  </header>
+
+  <!-- 1. 绑定 -->
+  <section id="view-enroll" class="card hidden">
+    <h2>绑定 Google Authenticator</h2>
+    <p class="hint">首次使用：先填入服务器管理令牌，生成绑定二维码，用 Google Authenticator 扫码后会每 30 秒生成一个六位数校验码。</p>
+    <div class="row" style="margin-top:14px">
+      <div style="flex:2 1 320px">
+        <label>管理令牌（admin token）</label>
+        <input id="adm" type="text" placeholder="adm-..." autocomplete="off">
+      </div>
+      <div style="flex:0 0 auto"><button id="btn-start">生成绑定二维码</button></div>
+    </div>
+    <div id="enroll-box" class="hidden">
+      <div class="qrbox">
+        <div class="qr"><img id="qrimg" alt="otpauth QR"></div>
+        <div style="flex:1 1 260px">
+          <label>密钥（手填备用）</label>
+          <div id="secret" class="secret">-</div>
+          <label style="margin-top:14px">输入 App 上的六位数校验码完成绑定</label>
+          <div class="codes" id="codes-enroll"></div>
+          <button id="btn-confirm">确认绑定</button>
+        </div>
+      </div>
+    </div>
+    <div id="msg-enroll" class="msg"></div>
+  </section>
+
+  <!-- 2. 登录 -->
+  <section id="view-login" class="card hidden">
+    <h2>六位数校验码登录</h2>
+    <p class="hint">打开 Google Authenticator，输入当前 6 位数字，自动登录。</p>
+    <div class="codes" id="codes-login"></div>
+    <div id="msg-login" class="msg"></div>
+  </section>
+
+  <!-- 3. 面板 -->
+  <section id="view-panel" class="hidden">
+    <div class="card">
+      <div class="stats" id="stats"></div>
+    </div>
+    <div class="card">
+      <h2>创建 API Key</h2>
+      <div class="row">
+        <div style="flex:2 1 240px"><label>名称</label><input id="kname" type="text" value="default"></div>
+        <div style="flex:1 1 160px"><label>额度（学分，0=不限）</label><input id="kquota" type="number" value="0" min="0" step="120"></div>
+        <div style="flex:0 0 auto"><button id="btn-key">创建</button></div>
+      </div>
+      <div id="newkey" class="newkey">
+        <b>Key 已创建，只显示这一次：</b>
+        <code id="newkey-val"></code>
+        <div class="row" style="margin-top:10px">
+          <div style="flex:0 0 auto"><button class="ghost" id="btn-copy">复制</button></div>
+          <div style="flex:0 0 auto"><button class="ghost" id="btn-hide">收起</button></div>
+        </div>
+      </div>
+      <div id="msg-key" class="msg"></div>
+    </div>
+    <div class="card">
+      <h2>Keys</h2>
+      <div style="overflow:auto"><table id="tbl-keys"><thead><tr>
+        <th>名称</th><th>前缀</th><th>额度</th><th>已用</th><th>状态</th><th>创建时间</th><th></th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card">
+      <h2>最近任务</h2>
+      <div style="overflow:auto"><table id="tbl-jobs"><thead><tr>
+        <th>ID</th><th>状态</th><th>模型</th><th>创建时间</th><th>错误</th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="card" style="display:flex;gap:12px;justify-content:space-between;align-items:center">
+      <div class="hint">接口文档：<a href="#" data-doc="docs" target="_blank" style="color:#8fb0ff">/docs</a> ·
+        OpenAPI：<a href="#" data-doc="openapi.json" target="_blank" style="color:#8fb0ff">/openapi.json</a></div>
+      <button class="ghost" id="btn-logout">退出登录</button>
+    </div>
+  </section>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+// Works for both /pippit/admin and /pippit/admin/ (trailing slash included).
+const ADMIN_BASE = location.pathname.replace(/\/+$/, '');
+const ROOT = ADMIN_BASE.replace(/\/admin$/, '');
+document.querySelectorAll('a[data-doc]').forEach(a => { a.href = ROOT + '/' + a.dataset.doc; });
+const api = async (path, opt) => {
+  const r = await fetch(ADMIN_BASE + '/' + path, Object.assign({headers:{'Content-Type':'application/json'}}, opt||{}));
+  let j = null; try { j = await r.json(); } catch(e) {}
+  if (!r.ok) { const d = (j && (j.detail||j.error)) || ('HTTP '+r.status); throw new Error(typeof d==='string'?d:JSON.stringify(d)); }
+  return j;
+};
+const toast = (t) => { const el=$('#toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2200); };
+const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = (ts) => ts ? new Date(ts*1000).toLocaleString('zh-CN',{hour12:false}) : '-';
+
+function codeBoxes(host, onDone){
+  host.innerHTML='';
+  const inputs=[];
+  for(let i=0;i<6;i++){
+    const el=document.createElement('input');
+    el.type='text'; el.inputMode='numeric'; el.maxLength=1; el.autocomplete='one-time-code';
+    el.addEventListener('input',()=>{
+      el.value=el.value.replace(/\D/g,'').slice(0,1);
+      if(el.value && i<5) inputs[i+1].focus();
+      if(inputs.every(x=>x.value)) onDone(inputs.map(x=>x.value).join(''));
+    });
+    el.addEventListener('keydown',(e)=>{
+      if(e.key==='Backspace' && !el.value && i>0){ inputs[i-1].focus(); inputs[i-1].value=''; e.preventDefault(); }
+      if(e.key==='Enter'){ onDone(inputs.map(x=>x.value).join('')); }
+    });
+    el.addEventListener('paste',(e)=>{
+      const t=(e.clipboardData.getData('text')||'').replace(/\D/g,'').slice(0,6);
+      if(t.length===6){ e.preventDefault(); t.split('').forEach((c,k)=>inputs[k].value=c); inputs[5].focus(); onDone(t); }
+    });
+    host.appendChild(el); inputs.push(el);
+  }
+  inputs[0].focus();
+  return inputs;
+}
+
+let state = {enrolled:false, authed:false};
+
+async function refresh(){
+  try {
+    state = await api('api/status');
+  } catch(e) { state = {enrolled:false, authed:false}; }
+  $('#view-enroll').classList.toggle('hidden', state.enrolled || state.authed);
+  $('#view-login').classList.toggle('hidden', !state.enrolled || state.authed);
+  $('#view-panel').classList.toggle('hidden', !state.authed);
+  $('#who').textContent = state.authed ? '已登录 · 会话 12 小时' : (state.enrolled ? '未登录' : '未绑定');
+  if(state.enrolled && !state.authed) codeBoxes($('#codes-login'), doLogin);
+  if(state.authed) loadPanel();
+}
+
+async function doLogin(code){
+  if(code.length!==6) return;
+  const m=$('#msg-login'); m.className='msg'; m.textContent='验证中…';
+  try {
+    await api('api/login',{method:'POST',body:JSON.stringify({code})});
+    m.textContent=''; refresh();
+  } catch(e) { m.className='msg err'; m.textContent='校验失败：'+e.message; codeBoxes($('#codes-login'), doLogin); }
+}
+
+$('#btn-start').onclick = async () => {
+  const tok = $('#adm').value.trim();
+  const m=$('#msg-enroll');
+  if(!tok){ m.className='msg err'; m.textContent='请先填写管理令牌'; return; }
+  m.className='msg'; m.textContent='生成中…';
+  try {
+    const r = await api('api/enroll/start',{method:'POST',headers:{'Content-Type':'application/json','X-Admin-Token':tok},body:'{}'});
+    localStorage.setItem('wz_adm', tok);
+    $('#enroll-box').classList.remove('hidden');
+    $('#qrimg').src = r.qr || '';
+    $('#qrimg').style.display = r.qr ? 'block' : 'none';
+    $('#secret').textContent = r.secret;
+    m.textContent = r.qr ? '扫码后输入 6 位数字确认' : '未安装 QR 组件，请手动输入密钥';
+    codeBoxes($('#codes-enroll'), doConfirm);
+  } catch(e){ m.className='msg err'; m.textContent='生成失败：'+e.message; }
+};
+
+async function doConfirm(code){
+  const m=$('#msg-enroll');
+  try {
+    await api('api/enroll/confirm',{method:'POST',body:JSON.stringify({code})});
+    m.className='msg ok'; m.textContent='绑定成功，正在进入控制台…';
+    setTimeout(refresh, 500);
+  } catch(e){ m.className='msg err'; m.textContent='校验失败：'+e.message; codeBoxes($('#codes-enroll'), doConfirm); }
+}
+$('#btn-confirm').onclick = () => {
+  const v=[...document.querySelectorAll('#codes-enroll input')].map(x=>x.value).join('');
+  doConfirm(v);
+};
+
+async function loadPanel(){
+  try {
+    const [keys, jobs, pool, workers] = await Promise.all([
+      api('api/keys'), api('api/jobs?limit=15'), api('api/pool').catch(()=>null),
+      api('api/workers').catch(()=>null)
+    ]);
+    const wOn = !!(workers && (workers.data||[]).some(w => w.online));
+    const wInfo = ((workers && workers.data) || []).find(w => w.online) || {};
+    const poolN = (pool && pool.total != null) ? pool.total
+                : (wInfo.info && wInfo.info.accounts_total != null ? wInfo.info.accounts_total : '-');
+    const poolBusy = (wInfo.info && wInfo.info.accounts_locked != null) ? wInfo.info.accounts_locked : '-';
+    const ks = keys.data || [];
+    const jc = (pool && pool.jobs) || {};
+    $('#stats').innerHTML = [
+      ['Keys', ks.filter(k=>k.active).length],
+      ['任务总数', Object.values(jc).reduce((a,b)=>a+b,0)],
+      ['成功', jc.succeeded||0],
+      ['运行中', (jc.running||0)+(jc.queued||0)],
+      ['号池', poolN + (poolBusy !== '-' ? ' / 占用 ' + poolBusy : '')],
+      ['渲染机', wOn ? '在线' : '离线'],
+    ].map(([k,v])=>`<div class="stat"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('');
+
+    $('#tbl-keys tbody').innerHTML = ks.map(k=>`<tr>
+      <td>${esc(k.name)}</td><td class="mono">${esc(k.prefix)}…</td>
+      <td>${k.quota_credits? esc(k.quota_credits):'不限'}</td><td>${esc(k.used_credits)}</td>
+      <td><span class="pill ${k.active?'on':'off'}">${k.active?'启用':'已撤销'}</span></td>
+      <td class="mono">${fmt(k.created_at)}</td>
+      <td>${k.active?`<button class="danger" data-kid="${esc(k.id)}">撤销</button>`:''}</td></tr>`).join('')
+      || '<tr><td colspan="7" class="hint">还没有 key</td></tr>';
+    $('#tbl-keys tbody').querySelectorAll('button[data-kid]').forEach(b=>{
+      b.onclick = async () => {
+        if(!confirm('确认撤销这个 key？')) return;
+        try { await api('api/keys/'+encodeURIComponent(b.dataset.kid),{method:'DELETE'}); toast('已撤销'); loadPanel(); }
+        catch(e){ toast('撤销失败：'+e.message); }
+      };
+    });
+
+    const rows = jobs.data || [];
+    $('#tbl-jobs tbody').innerHTML = rows.map(j=>`<tr>
+      <td class="mono">${esc(j.id)}</td><td>${esc(j.status)}</td><td>${esc(j.model)}</td>
+      <td class="mono">${fmt(j.created_at)}</td>
+      <td class="hint err" title="${esc(j.error||'')}">${esc((j.error||'').slice(0,160))}${(j.error||'').length>160?'…':''}</td></tr>`).join('')
+      || '<tr><td colspan="5" class="hint">暂无任务</td></tr>';
+  } catch(e) { if(String(e.message).includes('401')) refresh(); }
+}
+
+$('#btn-key').onclick = async () => {
+  const m=$('#msg-key'); m.className='msg'; m.textContent='创建中…';
+  try {
+    const r = await api('api/keys',{method:'POST',body:JSON.stringify({
+      name: $('#kname').value.trim()||'default', quota_credits: parseInt($('#kquota').value||'0',10)
+    })});
+    $('#newkey').style.display='block'; $('#newkey-val').textContent=r.key;
+    m.className='msg ok'; m.textContent='创建成功';
+    loadPanel();
+  } catch(e){ m.className='msg err'; m.textContent='创建失败：'+e.message; }
+};
+$('#btn-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#newkey-val').textContent); toast('已复制'); }
+  catch(e){ toast('复制失败，请手动选择'); }
+};
+$('#btn-hide').onclick = () => { $('#newkey').style.display='none'; $('#newkey-val').textContent=''; };
+$('#btn-logout').onclick = async () => { try{ await api('api/logout',{method:'POST',body:'{}'}); }catch(e){} refresh(); };
+
+const saved = localStorage.getItem('wz_adm'); if(saved) $('#adm').value = saved;
+refresh();
+</script>
+</body>
+</html>
